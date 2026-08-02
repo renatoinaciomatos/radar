@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Radar Dragão Estabilizado</title>
+    <title>Radar</title>
     <style>
         * {
             box-sizing: border-box;
@@ -204,7 +204,7 @@
     </div>
 
     <div class="info-panel" id="info-panel">
-        Buscando sinal estável de GPS...
+        Detectando Aura...
     </div>
     <script>
         let currentPosition = null;
@@ -291,13 +291,13 @@
             CONTAINER.innerHTML = '';
             if (!currentPosition) return;
 
-            let statusText = `Alcance Visível: ${radarRadiusInMeters} metros\nSegure a tela por 1s para salvar um objeto na sua coordenada atual.`;
+            let statusText = `Raio: ${radarRadiusInMeters} metros\n`;
             
             if (selectedObjectId) {
                 const currentObj = objectsList.find(obj => obj.id === selectedObjectId);
                 if (currentObj) {
                     const distance = calculateDistance(currentPosition.lat, currentPosition.lng, currentObj.lat, currentObj.lng);
-                    statusText += `\n\nAlvo Selecionado: ${currentObj.name}\nDistância real: ${distance.toFixed(1)}m`;
+                    statusText += `\n\nProcurando: ${currentObj.name}\nDistância: ${distance.toFixed(1)}m`;
                 }
             }
             INFO.innerText = statusText;
@@ -371,7 +371,7 @@
         }
 
         function handleLongPress() {
-            const objectName = prompt("Nome do objeto mapeado:");
+            const objectName = prompt("Guardando:");
             if (objectName && objectName.trim() !== "") {
                 const newObject = {
                     id: Date.now(),
@@ -409,13 +409,13 @@
             const distance = calculateDistance(currentPosition.lat, currentPosition.lng, currentObj.lat, currentObj.lng);
             
             if (distance <= 3) {
-                alert(`Parabéns! Você conseguiu coletar o objeto: "${currentObj.name}"!`);
+                alert(`Parabéns! Você conseguiu: "${currentObj.name}"!`);
                 objectsList = objectsList.filter(obj => obj.id !== selectedObjectId);
                 localStorage.setItem('radar_objects', JSON.stringify(objectsList));
                 selectedObjectId = null;
                 updateRadar();
             } else {
-                alert(`Muito longe! Você está a ${distance.toFixed(1)}m. Aproxime-se a menos de 3 metros.`);
+                alert(`Você está a ${distance.toFixed(1)}m. Aproxime-se a menos de 3 metros.`);
             }
         });
 
