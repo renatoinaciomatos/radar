@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Radar de Objetos</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: #1e1e1e;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        /* Estrutura Externa do Radar */
+        .radar-case {
+            width: 340px;
+            height: 380px;
+            background: radial-gradient(circle at 50% 30%, #f0f0f0 0%, #c0c0c0 70%, #8c8c8c 100%);
+            border-radius: 50% 50% 45% 45%;
+            position: relative;
+            box-shadow: 0 15px 30px rgba(0,0,0,0.5), inset 0 -10px 20px rgba(0,0,0,0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding-top: 40px;
+        }
+
+        /* Botão Superior do Dispositivo */
+        .radar-top-button {
+            position: absolute;
+            top: -15px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 70px;
+            height: 35px;
+            background: linear-gradient(to right, #666, #999, #666);
+            border-radius: 5px 5px 0 0;
+            border-bottom: 4px solid #444;
+            box-shadow: inset 0 5px 5px rgba(255,255,255,0.3);
+        }
+
+        /* Tela do Radar */
+        .radar-screen {
+            width: 280px;
+            height: 280px;
+            background-color: #224422;
+            border: 12px solid #a0a0a0;
+            border-radius: 50%;
+            position: relative;
+            overflow: hidden;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.8), 0 4px 10px rgba(0,0,0,0.3);
+        }
+
+        /* Linhas de Grade Emulando o Estilo Clássico */
+        .grid-lines {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                linear-gradient(rgba(255, 255, 255, 0.15) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255, 255, 255, 0.15) 1px, transparent 1px);
+            background-size: 20px 20px;
+            background-position: center;
+            pointer-events: none;
+        }
+
+        /* Varredura Circular do Radar */
+        .sweep {
+            position: absolute;
+            width: 200%;
+            height: 200%;
+            top: -50%;
+            left: -50%;
+            background: conic-gradient(from 0deg, rgba(0,255,0,0.15) 0deg, transparent 90deg);
+            animation: rotate-sweep 4s linear infinite;
+            pointer-events: none;
+            transform-origin: center;
+        }
+
+        @keyframes rotate-sweep {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        /* Marcador Central (Sua Posição Fica Fixa no Centro) */
+        .center-marker {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 12px;
+            height: 12px;
+            background-color: #00ff00;
+            border: 2px solid #ffffff;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 0 8px #00ff00;
+            z-index: 10;
+        }
+
+        /* Container para os Pontos Renderizados */
+        #points-container {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+        }
+
+        /* Estilo dos Objetos Cadastrados (Brilho Laranja) */
+        .object-dot {
+            position: absolute;
+            width: 14px;
+            height: 14px;
+            background: radial-gradient(circle, #fff 0%, #ff8800 40%, #ff3300 100%);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 0 12px #ff5500, 0 0 4px #ffaa00;
+            transition: left 0.2s ease, top 0.2s ease;
+            cursor: pointer;
+        }
+
+        .object-dot.selected {
+            border: 2px solid #ffffff;
+            box-shadow: 0 0 20px #ffffff, 0 0 8px #ff5500;
+        }
+
+        /* Painel Inferior de Controle */
+        .controls {
+            margin-top: 25px;
+            display: flex;
+            gap: 12px;
+        }
+
+        button {
+            padding: 12px 18px;
+            font-size: 14px;
+            font-weight: bold;
+            color: #ffffff;
+            background: linear-gradient(to bottom, #444, #222);
+            border: 2px solid #555;
+            border-radius: 8px;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            text-transform: uppercase;
+        }
+
+        button:active {
+            transform: scale(0.95);
+            background: linear-gradient(to bottom, #222, #111);
+        }
+
+        #collect-btn {
+            background: linear-gradient(to bottom, #d9534f, #c9302c);
+            border-color: #ac2925;
+        }
+        
+        #collect-btn:active {
+            background: linear-gradient(to bottom, #c9302c, #a61d19);
+        }
+
+        /* Feedback Visual de Informações */
+        .info-panel {
+            color: #88ff88;
+            font-family: monospace;
+            margin-top: 15px;
+            font-size: 13px;
+            text-align: center;
+            max-width: 320px;
+            line-height: 1.4;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="radar-case">
+        <div class="radar-top-button"></div>
+        <div class="radar-screen" id="radar-screen">
+            <div class="grid-lines"></div>
+            <div class="sweep"></div>
+            <div class="center-marker"></div>
+            <div id="points-container"></div>
+        </div>
+    </div>
+
+    <div class="controls">
+        <button id="zoom-in-btn">Zoom In</button>
+        <button id="zoom-out-btn">Zoom Out</button>
+        <button id="collect-btn">Coletar</button>
+    </div>
+
+    <div class="info-panel" id="info-panel">
+        Aguardando sinal de GPS...
+    </div>
+    <script>
+        let currentPosition = null;
+        let objectsList = JSON.parse(localStorage.getItem('radar_objects')) || [];
+        let zoomLevel = 0.0005; 
+        let selectedObjectId = null;
+
+        let pressTimer = null;
+        const SCREEN = document.getElementById('radar-screen');
+        const CONTAINER = document.getElementById('points-container');
+        const INFO = document.getElementById('info-panel');
+
+        function initGeolocation() {
+            if (!navigator.geolocation) {
+                INFO.innerText = "Erro: Seu navegador não suporta Geolocalização.";
+                return;
+            }
+
+            navigator.geolocation.watchPosition(
+                (position) => {
+                    currentPosition = {
+                        lat: position.coords.latitude,
+                        lng: position.coords.longitude
+                    };
+                    updateRadar();
+                },
+                (error) => {
+                    INFO.innerText = "Erro ao acessar GPS. Ative a localização.";
+                    console.error(error);
+                },
+                { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
+            );
+        }
+
+        function updateRadar() {
+            CONTAINER.innerHTML = '';
+            if (!currentPosition) return;
+
+            INFO.innerText = `GPS OK | Zoom: ${(1/zoomLevel).toFixed(0)}x\nToque e segure na tela para marcar um item.`;
+
+            const screenWidth = SCREEN.clientWidth;
+            const screenHeight = SCREEN.clientHeight;
+            const centerX = screenWidth / 2;
+            const centerY = screenHeight / 2;
+
+            objectsList.forEach(obj => {
+                const deltaLat = obj.lat - currentPosition.lat;
+                const deltaLng = obj.lng - currentPosition.lng;
+
+                const posX = centerX + (deltaLng / zoomLevel) * centerX;
+                const posY = centerY - (deltaLat / zoomLevel) * centerY;
+
+                const distFromCenter = Math.sqrt(Math.pow(posX - centerX, 2) + Math.pow(posY - centerY, 2));
+                
+                if (distFromCenter < (centerX - 10)) {
+                    const dot = document.createElement('div');
+                    dot.className = 'object-dot';
+                    if (selectedObjectId === obj.id) dot.classList.add('selected');
+                    
+                    dot.style.left = `${posX}px`;
+                    dot.style.top = `${posY}px`;
+                    
+                    dot.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        selectObject(obj);
+                    });
+
+                    CONTAINER.appendChild(dot);
+                }
+            });
+        }
+
+        function selectObject(obj) {
+            selectedObjectId = obj.id;
+            const distance = calculateDistance(currentPosition.lat, currentPosition.lng, obj.lat, obj.lng);
+            INFO.innerText = `Alvo: ${obj.name}\nDistância atual: ${distance.toFixed(1)} metros`;
+            updateRadar();
+        }
+
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371000; 
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = 
+                Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+                Math.sin(dLon/2) * Math.sin(dLon/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+        }
+
+        function startPress(e) {
+            if (!currentPosition) return;
+            const clientX = e.touches ? e.touches.clientX : e.clientX;
+            const clientY = e.touches ? e.touches.clientY : e.clientY;
+            
+            const rect = SCREEN.getBoundingClientRect();
+            const clickX = clientX - rect.left;
+            const clickY = clientY - rect.top;
+
+            pressTimer = setTimeout(() => {
+                handleLongPress(clickX, clickY);
+            }, 800); 
+        }
+
+        function cancelPress() {
+            if (pressTimer) clearTimeout(pressTimer);
+        }
+
+        function handleLongPress(x, y) {
+            const screenWidth = SCREEN.clientWidth;
+            const screenHeight = SCREEN.clientHeight;
+            const centerX = screenWidth / 2;
+            const centerY = screenHeight / 2;
+
+            const deltaLng = ((x - centerX) / centerX) * zoomLevel;
+            const deltaLat = ((centerY - y) / centerY) * zoomLevel;
+
+            const targetLat = currentPosition.lat + deltaLat;
+            const targetLng = currentPosition.lng + deltaLng;
+
+            const objectName = prompt("Insira o nome do objeto encontrado:");
+            
+            if (objectName && objectName.trim() !== "") {
+                const newObject = {
+                    id: Date.now(),
+                    name: objectName.trim(),
+                    lat: targetLat,
+                    lng: targetLng
+                };
+
+                objectsList.push(newObject);
+                localStorage.setItem('radar_objects', JSON.stringify(objectsList));
+                updateRadar();
+            }
+        }
+
+        document.getElementById('zoom-in-btn').addEventListener('click', () => {
+            zoomLevel = Math.max(0.00005, zoomLevel / 1.5);
+            updateRadar();
+        });
+
+        document.getElementById('zoom-out-btn').addEventListener('click', () => {
+            zoomLevel = Math.min(0.005, zoomLevel * 1.5);
+            updateRadar();
+        });
+
+        document.getElementById('collect-btn').addEventListener('click', () => {
+            if (!selectedObjectId) {
+                alert("Selecione um ponto laranja no radar primeiro!");
+                return;
+            }
+
+            const currentObj = objectsList.find(obj => obj.id === selectedObjectId);
+            if (!currentObj || !currentPosition) return;
+
+            const distance = calculateDistance(currentPosition.lat, currentPosition.lng, currentObj.lat, currentObj.lng);
+
+            if (distance <= 3) {
+                alert(`Sucesso! Você coletou o objeto: "${currentObj.name}"`);
+                objectsList = objectsList.filter(obj => obj.id !== selectedObjectId);
+                localStorage.setItem('radar_objects', JSON.stringify(objectsList));
+                selectedObjectId = null;
+                updateRadar();
+            } else {
+                alert(`Muito longe! Você está a ${distance.toFixed(1)}m deste objeto. Aproxime-se a menos de 3m.`);
+            }
+        });
+
+        SCREEN.addEventListener('mousedown', startPress);
+        SCREEN.addEventListener('mouseup', cancelPress);
+        SCREEN.addEventListener('mouseleave', cancelPress);
+        SCREEN.addEventListener('touchstart', startPress, { passive: true });
+        SCREEN.addEventListener('touchend', cancelPress);
+        SCREEN.addEventListener('touchmove', cancelPress);
+
+        initGeolocation();
+    </script>
+</body>
+</html>
