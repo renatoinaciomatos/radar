@@ -272,20 +272,28 @@
         }
 
         function handleOrientation(event) {
-            let rawHeading = event.webkitCompassHeading || event.alpha;
-            if (rawHeading !== null && rawHeading !== undefined) {
-                let targetHeading = 360 - rawHeading;
+  let targetHeading = null;
 
-                // Resolve o problema matemático do salto de ângulo entre 359° e 0°
-                let diff = targetHeading - smoothedHeading;
-                if (diff > 180) diff -= 360;
-                if (diff < -180) diff += 360;
+  // iOS: usa webkitCompassHeading (sentido horário)
+  if (event.webkitCompassHeading !== undefined && event.webkitCompassHeading !== null) {
+    targetHeading = 360 - event.webkitCompassHeading;
+  } 
+  // Android / Padrão W3C: usa alpha diretamente (sentido anti-horário)
+  else if (event.alpha !== null && event.alpha !== undefined) {
+    targetHeading = event.alpha; 
+  }
 
-                // Aplica a média móvel exponencial de amortecimento
-                smoothedHeading += diff * COMPASS_SMOOTHING;
-                DISK.style.transform = `rotate(${smoothedHeading}deg)`;
-            }
-        }
+  if (targetHeading !== null) {
+    // Resolve o problema matemático do salto de ângulo entre 359° e 0°
+    let diff = targetHeading - smoothedHeading;
+    if (diff > 180) diff -= 360;
+    if (diff < -180) diff += 360;
+
+    // Aplica a média móvel exponencial de amortecimento
+    smoothedHeading += diff * COMPASS_SMOOTHING;
+    DISK.style.transform = `rotate(${smoothedHeading}deg)`;
+  }
+}
 
         function updateRadar() {
             CONTAINER.innerHTML = '';
