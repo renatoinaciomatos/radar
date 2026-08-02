@@ -2,13 +2,17 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Radar de Objetos</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Radar de Objetos Mobile</title>
     <style>
         * {
             box-sizing: border-box;
             margin: 0;
             padding: 0;
+            /* Desativa seleção de texto e menus nativos ao segurar a tela no celular */
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
         }
 
         body {
@@ -20,14 +24,12 @@
             min-height: 100vh;
             font-family: Arial, sans-serif;
             overflow: hidden;
-            user-select: none;
-            -webkit-user-select: none;
         }
 
         /* Estrutura Externa do Radar */
         .radar-case {
-            width: 340px;
-            height: 380px;
+            width: 320px;
+            height: 360px;
             background: radial-gradient(circle at 50% 30%, #f0f0f0 0%, #c0c0c0 70%, #8c8c8c 100%);
             border-radius: 50% 50% 45% 45%;
             position: relative;
@@ -44,27 +46,28 @@
             top: -15px;
             left: 50%;
             transform: translateX(-50%);
-            width: 70px;
-            height: 35px;
+            width: 65px;
+            height: 30px;
             background: linear-gradient(to right, #666, #999, #666);
             border-radius: 5px 5px 0 0;
             border-bottom: 4px solid #444;
-            box-shadow: inset 0 5px 5px rgba(255,255,255,0.3);
         }
 
         /* Tela do Radar */
         .radar-screen {
-            width: 280px;
-            height: 280px;
+            width: 260px;
+            height: 260px;
             background-color: #224422;
             border: 12px solid #a0a0a0;
             border-radius: 50%;
             position: relative;
             overflow: hidden;
             box-shadow: inset 0 0 20px rgba(0,0,0,0.8), 0 4px 10px rgba(0,0,0,0.3);
+            /* Evita gestos padrão do navegador nesta área */
+            touch-action: none; 
         }
 
-        /* Linhas de Grade Emulando o Estilo Clássico */
+        /* Linhas de Grade */
         .grid-lines {
             position: absolute;
             width: 100%;
@@ -77,7 +80,7 @@
             pointer-events: none;
         }
 
-        /* Varredura Circular do Radar */
+        /* Varredura Circular */
         .sweep {
             position: absolute;
             width: 200%;
@@ -95,7 +98,7 @@
             to { transform: rotate(360deg); }
         }
 
-        /* Marcador Central (Sua Posição Fica Fixa no Centro) */
+        /* Marcador Central */
         .center-marker {
             position: absolute;
             top: 50%;
@@ -110,7 +113,6 @@
             z-index: 10;
         }
 
-        /* Container para os Pontos Renderizados */
         #points-container {
             position: absolute;
             width: 100%;
@@ -119,17 +121,15 @@
             left: 0;
         }
 
-        /* Estilo dos Objetos Cadastrados (Brilho Laranja) */
+        /* Objetos (Esferas Laranjas) */
         .object-dot {
             position: absolute;
-            width: 14px;
-            height: 14px;
+            width: 16px;
+            height: 16px;
             background: radial-gradient(circle, #fff 0%, #ff8800 40%, #ff3300 100%);
             border-radius: 50%;
             transform: translate(-50%, -50%);
             box-shadow: 0 0 12px #ff5500, 0 0 4px #ffaa00;
-            transition: left 0.2s ease, top 0.2s ease;
-            cursor: pointer;
         }
 
         .object-dot.selected {
@@ -145,8 +145,8 @@
         }
 
         button {
-            padding: 12px 18px;
-            font-size: 14px;
+            padding: 12px 20px;
+            font-size: 16px;
             font-weight: bold;
             color: #ffffff;
             background: linear-gradient(to bottom, #444, #222);
@@ -154,31 +154,28 @@
             border-radius: 8px;
             cursor: pointer;
             box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-            text-transform: uppercase;
         }
 
-        button:active {
-            transform: scale(0.95);
-            background: linear-gradient(to bottom, #222, #111);
+        /* Ajuste específico para os botões de escala */
+        .zoom-btn {
+            font-size: 20px;
+            padding: 8px 24px;
         }
 
         #collect-btn {
             background: linear-gradient(to bottom, #d9534f, #c9302c);
             border-color: #ac2925;
-        }
-        
-        #collect-btn:active {
-            background: linear-gradient(to bottom, #c9302c, #a61d19);
+            text-transform: uppercase;
+            font-size: 14px;
         }
 
-        /* Feedback Visual de Informações */
         .info-panel {
             color: #88ff88;
             font-family: monospace;
             margin-top: 15px;
             font-size: 13px;
             text-align: center;
-            max-width: 320px;
+            max-width: 300px;
             line-height: 1.4;
         }
     </style>
@@ -196,8 +193,8 @@
     </div>
 
     <div class="controls">
-        <button id="zoom-in-btn">Zoom In</button>
-        <button id="zoom-out-btn">Zoom Out</button>
+        <button id="zoom-in-btn" class="zoom-btn">+</button>
+        <button id="zoom-out-btn" class="zoom-btn">-</button>
         <button id="collect-btn">Coletar</button>
     </div>
 
@@ -211,6 +208,8 @@
         let selectedObjectId = null;
 
         let pressTimer = null;
+        let isLongPressTriggered = false;
+
         const SCREEN = document.getElementById('radar-screen');
         const CONTAINER = document.getElementById('points-container');
         const INFO = document.getElementById('info-panel');
@@ -230,10 +229,10 @@
                     updateRadar();
                 },
                 (error) => {
-                    INFO.innerText = "Erro ao acessar GPS. Ative a localização.";
+                    INFO.innerText = "Erro ao acessar GPS. Ative a localização nas configurações do celular.";
                     console.error(error);
                 },
-                { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
+                { enableHighAccuracy: true, maximumAge: 0, timeout: 8000 }
             );
         }
 
@@ -241,7 +240,7 @@
             CONTAINER.innerHTML = '';
             if (!currentPosition) return;
 
-            INFO.innerText = `GPS OK | Zoom: ${(1/zoomLevel).toFixed(0)}x\nToque e segure na tela para marcar um item.`;
+            INFO.innerText = `GPS OK\nPressione e segure a tela verde por 1 segundo para marcar um objeto.`;
 
             const screenWidth = SCREEN.clientWidth;
             const screenHeight = SCREEN.clientHeight;
@@ -265,6 +264,11 @@
                     dot.style.left = `${posX}px`;
                     dot.style.top = `${posY}px`;
                     
+                    // Tratamento de clique simples em smartphones
+                    dot.addEventListener('touchend', (e) => {
+                        e.stopPropagation();
+                        selectObject(obj);
+                    });
                     dot.addEventListener('click', (e) => {
                         e.stopPropagation();
                         selectObject(obj);
@@ -278,7 +282,7 @@
         function selectObject(obj) {
             selectedObjectId = obj.id;
             const distance = calculateDistance(currentPosition.lat, currentPosition.lng, obj.lat, obj.lng);
-            INFO.innerText = `Alvo: ${obj.name}\nDistância atual: ${distance.toFixed(1)} metros`;
+            INFO.innerText = `Alvo: ${obj.name}\nDistância: ${distance.toFixed(1)}m de você.`;
             updateRadar();
         }
 
@@ -294,22 +298,34 @@
             return R * c;
         }
 
+        // Sistema unificado de Toque Longo compatível com Mobile
         function startPress(e) {
             if (!currentPosition) return;
-            const clientX = e.touches ? e.touches.clientX : e.clientX;
-            const clientY = e.touches ? e.touches.clientY : e.clientY;
+            
+            // Impede zoom ou ações nativas do navegador mobile durante o toque
+            if (e.cancelable) e.preventDefault(); 
+            
+            isLongPressTriggered = false;
+
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
             
             const rect = SCREEN.getBoundingClientRect();
             const clickX = clientX - rect.left;
             const clickY = clientY - rect.top;
 
             pressTimer = setTimeout(() => {
+                isLongPressTriggered = true;
                 handleLongPress(clickX, clickY);
-            }, 800); 
+            }, 900); // 900 milissegundos segurando para ativar
         }
 
-        function cancelPress() {
+        function cancelPress(e) {
             if (pressTimer) clearTimeout(pressTimer);
+            // Se foi um toque rápido (não ativou o long press), remove seleções prévias
+            if (!isLongPressTriggered && e.type === 'touchend') {
+                // Permite limpar o foco se clicar no vazio da tela
+            }
         }
 
         function handleLongPress(x, y) {
@@ -324,22 +340,24 @@
             const targetLat = currentPosition.lat + deltaLat;
             const targetLng = currentPosition.lng + deltaLng;
 
-            const objectName = prompt("Insira o nome do objeto encontrado:");
-            
-            if (objectName && objectName.trim() !== "") {
-                const newObject = {
-                    id: Date.now(),
-                    name: objectName.trim(),
-                    lat: targetLat,
-                    lng: targetLng
-                };
-
-                objectsList.push(newObject);
-                localStorage.setItem('radar_objects', JSON.stringify(objectsList));
-                updateRadar();
-            }
+            // Abre o prompt para nomear o objeto
+            setTimeout(() => {
+                const objectName = prompt("Insira o nome do objeto encontrado:");
+                if (objectName && objectName.trim() !== "") {
+                    const newObject = {
+                        id: Date.now(),
+                        name: objectName.trim(),
+                        lat: targetLat,
+                        lng: targetLng
+                    };
+                    objectsList.push(newObject);
+                    localStorage.setItem('radar_objects', JSON.stringify(objectsList));
+                    updateRadar();
+                }
+            }, 50);
         }
 
+        // Controles dos botões de escala modificados (+ e -)
         document.getElementById('zoom-in-btn').addEventListener('click', () => {
             zoomLevel = Math.max(0.00005, zoomLevel / 1.5);
             updateRadar();
@@ -368,16 +386,19 @@
                 selectedObjectId = null;
                 updateRadar();
             } else {
-                alert(`Muito longe! Você está a ${distance.toFixed(1)}m deste objeto. Aproxime-se a menos de 3m.`);
+                alert(`Muito longe! Você está a ${distance.toFixed(1)}m. Aproxime-se a menos de 3m.`);
             }
         });
 
+        // Eventos para Mobile (Toque)
+        SCREEN.addEventListener('touchstart', startPress, { passive: false });
+        SCREEN.addEventListener('touchend', cancelPress, { passive: false });
+        SCREEN.addEventListener('touchmove', cancelPress, { passive: false });
+
+        // Fallback para Desktop (Mouse)
         SCREEN.addEventListener('mousedown', startPress);
         SCREEN.addEventListener('mouseup', cancelPress);
         SCREEN.addEventListener('mouseleave', cancelPress);
-        SCREEN.addEventListener('touchstart', startPress, { passive: true });
-        SCREEN.addEventListener('touchend', cancelPress);
-        SCREEN.addEventListener('touchmove', cancelPress);
 
         initGeolocation();
     </script>
