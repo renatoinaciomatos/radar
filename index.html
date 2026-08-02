@@ -185,6 +185,12 @@
 </head>
 <body>
 
+    <!-- Aviso de Calibração -->
+    <div id="calibracao-aviso" style="display: none; position: absolute; top: 20px; left: 50%; transform: translateX(-50%); background: rgba(255, 165, 0, 0.95); color: black; padding: 12px; border-radius: 8px; font-weight: bold; font-size: 14px; text-align: center; z-index: 100; max-width: 85%; box-shadow: 0 4px 10px rgba(0,0,0,0.5);">
+        Bússola instável? Faça o movimento do número "8" no ar com o celular para calibrar.
+        <br><button onclick="document.getElementById('calibracao-aviso').style.display='none'" style="margin-top: 12px; padding: 6px 20px; font-size: 14px; background: #222; border: none; border-radius: 5px; color: white; cursor: pointer;">Entendi</button>
+    </div>
+
     <div class="radar-case">
         <div class="radar-top-button"></div>
         <div class="radar-screen" id="radar-screen">
@@ -206,18 +212,18 @@
     <div class="info-panel" id="info-panel">
         Detectando Aura...
     </div>
+
     <script>
         let currentPosition = null;
         let objectsList = JSON.parse(localStorage.getItem('radar_objects')) || [];
         
-        // Ajustado para iniciar em um meio-termo ideal dentro do limite solicitado de 5m a 100m
         let radarRadiusInMeters = 50; 
         
         let selectedObjectId = null;
         
         // Variáveis de amortecimento da bússola
         let smoothedHeading = 0;
-        const COMPASS_SMOOTHING = 0.2; // Quanto menor, mais suave e menos trêmulo o giro do radar
+        const COMPASS_SMOOTHING = 0.2; 
 
         // Filtro rígido antioscilação do GPS
         let lastRawLat = null;
@@ -231,6 +237,13 @@
         const INFO = document.getElementById('info-panel');
 
         function initSensors() {
+            // Mostra o aviso de calibração por 8 segundos assim que o radar iniciar
+            const aviso = document.getElementById('calibracao-aviso');
+            aviso.style.display = 'block';
+            setTimeout(() => {
+                aviso.style.display = 'none';
+            }, 8000);
+
             if (navigator.geolocation) {
                 navigator.geolocation.watchPosition(
                     (position) => {
@@ -258,6 +271,7 @@
 
             if (window.DeviceOrientationEvent) {
                 if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+                    // Para iOS
                     SCREEN.addEventListener('click', () => {
                         DeviceOrientationEvent.requestPermission()
                             .then(response => {
@@ -265,35 +279,64 @@
                             });
                     }, { once: true });
                 } else {
-                    window.addEventListener('deviceorientationabsolute', handleOrientation, true);
-                    window.addEventListener('deviceorientation', handleOrientation, true);
+                    // Para Android: Tenta usar apenas o absoluto. Se falhar, tenta o relativo.
+                    let absoluteSupported = 'ondeviceorientationabsolute' in window;
+                    
+                    if (absoluteSupported) {
+                        window.addEventListener('deviceorientationabsolute', handleOrientation, true);
+                    } else {
+                        window.addEventListener('deviceorientation', handleOrientation, true);
+                    }
                 }
             }
         }
 
         function handleOrientation(event) {
-  let targetHeading = null;
+            let alpha = event.alpha;
+            let beta = event.beta;
+            let gamma = event.gamma;
+            let targetHeading = null;
 
-  // iOS: usa webkitCompassHeading (sentido horário)
-  if (event.webkitCompassHeading !== undefined && event.webkitCompassHeading !== null) {
-    targetHeading = 360 - event.webkitCompassHeading;
-  } 
-  // Android / Padrão W3C: usa alpha diretamente (sentido anti-horário)
-  else if (event.alpha !== null && event.alpha !== undefined) {
-    targetHeading = event.alpha; 
-  }
+            // iOS: A Apple já entrega o valor compensado por padrão
+            if (event.webkitCompassHeading !== undefined && event.webkitCompassHeading !== null) {
+                targetHeading = 360 - event.webkitCompassHeading;
+            } 
+            // Android: Aplicando Sensor Fusion (Compensação de Inclinação) manualmente
+            else if (alpha !== null && beta !== null && gamma !== null) {
+                // Converte os ângulos de graus para radianos
+                const toRad = Math.PI / 180;
+                const a = alpha * toRad;
+                const b = beta * toRad;
+                const g = gamma * toRad;
 
-  if (targetHeading !== null) {
-    // Resolve o problema matemático do salto de ângulo entre 359° e 0°
-    let diff = targetHeading - smoothedHeading;
-    if (diff > 180) diff -= 360;
-    if (diff < -180) diff += 360;
+                // Fórmula matemática para projetar o vetor magnético em um plano horizontal (Tilt Compensation)
+                const cX = Math.cos(a) * Math.cos(g) - Math.sin(a) * Math.sin(b) * Math.sin(g);
+                const cY = Math.sin(a) * Math.cos(b);
+                
+                // Calcula o novo ângulo compensado
+                let compHeading = Math.atan2(cY, cX) / toRad;
+                
+                // Garante que o valor fique entre 0 e 360
+                if (compHeading < 0) compHeading += 360;
 
-    // Aplica a média móvel exponencial de amortecimento
-    smoothedHeading += diff * COMPASS_SMOOTHING;
-    DISK.style.transform = `rotate(${smoothedHeading}deg)`;
-  }
-}
+                targetHeading = compHeading;
+            } 
+            // Fallback de segurança caso o celular não forneça beta e gamma
+            else if (alpha !== null) {
+                targetHeading = alpha; 
+            }
+
+            if (targetHeading !== null) {
+                // Resolve o problema matemático do salto de ângulo entre 359° e 0°
+                let diff = targetHeading - smoothedHeading;
+                if (diff > 180) diff -= 360;
+                if (diff < -180) diff += 360;
+
+                // Aplica a média móvel exponencial de amortecimento
+                smoothedHeading += diff * COMPASS_SMOOTHING;
+                DISK.style.transform = `rotate(${smoothedHeading}deg)`;
+            }
+        }
 
         function updateRadar() {
             CONTAINER.innerHTML = '';
@@ -329,7 +372,6 @@
                     dot.style.left = `${pixelX}px`;
                     dot.style.top = `${pixelY}px`;
                     
-                    // Eventos de clique modificados com prevenção de propagação
                     const clickHandler = (e) => {
                         e.stopPropagation();
                         e.preventDefault();
@@ -343,12 +385,11 @@
             });
         }
 
-        // Requisito 3: Clicar sobre um alvo selecionado desfaz a seleção
         function toggleSelectObject(objId) {
             if (selectedObjectId === objId) {
-                selectedObjectId = null; // Desmarca se já estava selecionado
+                selectedObjectId = null; 
             } else {
-                selectedObjectId = objId; // Marca se não estava selecionado
+                selectedObjectId = objId; 
             }
             updateRadar();
         }
@@ -394,7 +435,6 @@
             }
         }
 
-        // Requisito 4: Ajusta o raio visível travado rigidamente de 5m a 100m
         document.getElementById('zoom-in-btn').addEventListener('click', () => {
             radarRadiusInMeters = Math.max(5, radarRadiusInMeters - 5); 
             updateRadar();
