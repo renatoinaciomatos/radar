@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Radar de Precisão GPS</title>
+    <title>Radar Dragão com Bússola e Filtro</title>
     <style>
         * {
             box-sizing: border-box;
@@ -62,10 +62,23 @@
             touch-action: none; 
         }
 
-        .grid-lines {
+        /* Elemento giratório controlado pela bússola */
+        #compass-disk {
             position: absolute;
             width: 100%;
             height: 100%;
+            top: 0;
+            left: 0;
+            transform-origin: center;
+            transition: transform 0.1s ease-out;
+        }
+
+        .grid-lines {
+            position: absolute;
+            width: 140%;
+            height: 140%;
+            top: -20%;
+            left: -20%;
             background-image: 
                 linear-gradient(rgba(255, 255, 255, 0.15) 1px, transparent 1px),
                 linear-gradient(90deg, rgba(255, 255, 255, 0.15) 1px, transparent 1px);
@@ -175,10 +188,13 @@
     <div class="radar-case">
         <div class="radar-top-button"></div>
         <div class="radar-screen" id="radar-screen">
-            <div class="grid-lines"></div>
+            <!-- Disco interno que roda de acordo com a bússola -->
+            <div id="compass-disk">
+                <div class="grid-lines"></div>
+                <div id="points-container"></div>
+            </div>
             <div class="sweep"></div>
             <div class="center-marker"></div>
-            <div id="points-container"></div>
         </div>
     </div>
 
@@ -194,75 +210,117 @@
     <script>
         let currentPosition = null;
         let objectsList = JSON.parse(localStorage.getItem('radar_objects')) || [];
-        let zoomLevel = 0.0001; // Zoom inicial mais próximo para melhor visualização em escala de metros
+        
+        // Definição exata do raio visível do radar em metros (Começa cobrindo 60m totais do centro até a borda)
+        let radarRadiusInMeters = 60; 
+        
         let selectedObjectId = null;
-        let gpsAccuracy = 0;
+        let currentHeading = 0; // Graus da bússola
+
+        // Variáveis do filtro básico de estabilização
+        let lastRawLat = null;
+        let lastRawLng = null;
 
         let pressTimer = null;
 
         const SCREEN = document.getElementById('radar-screen');
+        const DISK = document.getElementById('compass-disk');
         const CONTAINER = document.getElementById('points-container');
         const INFO = document.getElementById('info-panel');
 
-        function initGeolocation() {
-            if (!navigator.geolocation) {
-                INFO.innerText = "Erro: Navegador incompatível.";
-                return;
+        function initSensors() {
+            // 1. Inicializa Geolocalização com Filtro Antideriva
+            if (navigator.geolocation) {
+                navigator.geolocation.watchPosition(
+                    (position) => {
+                        let lat = position.coords.latitude;
+                        let lng = position.coords.longitude;
+
+                        if (lastRawLat !== null && lastRawLng !== null) {
+                            // Calcula quanto o sinal pulou desde o último segundo
+                            let jumpDist = calculateDistance(lastRawLat, lastRawLng, lat, lng);
+                            // Filtro de estabilidade: se o pulo for menor que 6 metros, assume-se que o usuário está parado
+                            if (jumpDist < 6) {
+                                lat = lastRawLat;
+                                lng = lastRawLng;
+                            }
+                        }
+
+                        lastRawLat = lat;
+                        lastRawLng = lng;
+                        currentPosition = { lat, lng };
+                        updateRadar();
+                    },
+                    (error) => { INFO.innerText = "Ative o GPS de Alta Precisão."; },
+                    { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
+                );
             }
 
-            navigator.geolocation.watchPosition(
-                (position) => {
-                    currentPosition = {
-                        lat: position.coords.latitude,
-                        lng: position.coords.longitude
-                    };
-                    gpsAccuracy = position.coords.accuracy;
-                    updateRadar();
-                },
-                (error) => {
-                    INFO.innerText = "Erro de sinal. Ative o GPS de Alta Precisão.";
-                },
-                { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
-            );
+            // 2. Inicializa a Bússola (Magnetômetro do Smartphone)
+            if (window.DeviceOrientationEvent) {
+                // Suporte para iOS (requer pedido de permissão explícito)
+                if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+                    SCREEN.addEventListener('click', () => {
+                        DeviceOrientationEvent.requestPermission()
+                            .then(response => {
+                                if (response === 'granted') window.addEventListener('deviceorientation', handleOrientation, true);
+                            });
+                    }, { once: true });
+                } else {
+                    // Android e outros navegadores modernos
+                    window.addEventListener('deviceorientationabsolute', handleOrientation, true);
+                    window.addEventListener('deviceorientation', handleOrientation, true);
+                }
+            }
+        }
+
+        function handleOrientation(event) {
+            // Captura a direção do norte magnético real do aparelho
+            let heading = event.webkitCompassHeading || event.alpha;
+            if (heading !== null && heading !== undefined) {
+                // Inverte o ângulo para que os pontos rotacionem corretamente no visor
+                currentHeading = 360 - heading;
+                DISK.style.transform = `rotate(${currentHeading}deg)`;
+            }
         }
 
         function updateRadar() {
             CONTAINER.innerHTML = '';
             if (!currentPosition) return;
 
-            let statusText = `Sinal GPS OK (Erro: +/-${gpsAccuracy.toFixed(0)}m)\nSegure a tela por 1s para marcar um objeto na sua posição atual.`;
+            let statusText = `Raio Visível: ${radarRadiusInMeters} metros\nSegure a tela por 1s para marcar um item no seu local físico atual.`;
             
             if (selectedObjectId) {
                 const currentObj = objectsList.find(obj => obj.id === selectedObjectId);
                 if (currentObj) {
                     const distance = calculateDistance(currentPosition.lat, currentPosition.lng, currentObj.lat, currentObj.lng);
-                    statusText += `\n\nAlvo Selecionado: ${currentObj.name}\nDistância atual: ${distance.toFixed(1)}m`;
+                    statusText += `\n\nAlvo Selecionado: ${currentObj.name}\nDistância: ${distance.toFixed(1)}m`;
                 }
             }
             INFO.innerText = statusText;
 
-            const screenWidth = SCREEN.clientWidth;
-            const screenHeight = SCREEN.clientHeight;
-            const centerX = screenWidth / 2;
-            const centerY = screenHeight / 2;
+            const screenRadiusPixels = SCREEN.clientWidth / 2;
 
             objectsList.forEach(obj => {
-                const deltaLat = obj.lat - currentPosition.lat;
-                const deltaLng = obj.lng - currentPosition.lng;
+                // Converte a diferença geográfica direta para metros reais no mundo
+                const metersY = (obj.lat - currentPosition.lat) * 111132; 
+                const metersX = (obj.lng - currentPosition.lng) * (40075000 * Math.cos(currentPosition.lat * Math.PI / 180) / 360);
 
-                // Transforma as coordenadas reais em pixels baseado unicamente na distância geográfica relativa
-                const posX = centerX + (deltaLng / zoomLevel) * centerX;
-                const posY = centerY - (deltaLat / zoomLevel) * centerY;
+                // Calcula a distância direta em metros reais até o ponto
+                const actualDistanceInMeters = Math.sqrt(metersX * metersX + metersY * metersY);
 
-                const distFromCenter = Math.sqrt(Math.pow(posX - centerX, 2) + Math.pow(posY - centerY, 2));
-                
-                if (distFromCenter < (centerX - 10)) {
+                // Se o objeto estiver dentro do raio máximo de visão configurado
+                if (actualDistanceInMeters <= radarRadiusInMeters) {
+                    // Regra de Proporção de Tela Baseada em Metros Exatos
+                    const pixelX = screenRadiusPixels + (metersX / radarRadiusInMeters) * screenRadiusPixels;
+                    const pixelY = screenRadiusPixels - (metersY / radarRadiusInMeters) * screenRadiusPixels;
+
                     const dot = document.createElement('div');
                     dot.className = 'object-dot';
                     if (selectedObjectId === obj.id) dot.classList.add('selected');
                     
-                    dot.style.left = `${posX}px`;
-                    dot.style.top = `${posY}px`;
+                    dot.style.left = `${pixelX}px`;
+                    dot.style.top = `${pixelY}px`;
                     
                     dot.addEventListener('touchstart', (e) => { e.stopPropagation(); selectObject(obj); });
                     dot.addEventListener('click', (e) => { e.stopPropagation(); selectObject(obj); });
@@ -278,7 +336,7 @@
         }
 
         function calculateDistance(lat1, lon1, lat2, lon2) {
-            const R = 6371000; // Raio da Terra em metros
+            const R = 6371000; 
             const dLat = (lat2 - lat1) * Math.PI / 180;
             const dLon = (lon2 - lon1) * Math.PI / 180;
             const a = 
@@ -295,7 +353,7 @@
 
             pressTimer = setTimeout(() => {
                 handleLongPress();
-            }, 1000); // 1 segundo para ativar a criação
+            }, 1000); 
         }
 
         function cancelPress() {
@@ -303,14 +361,13 @@
         }
 
         function handleLongPress() {
-            // Pede o nome para salvar o objeto
-            const objectName = prompt("Insira o nome do objeto encontrado:");
+            const objectName = prompt("Nome do objeto mapeado:");
             if (objectName && objectName.trim() !== "") {
                 const newObject = {
                     id: Date.now(),
                     name: objectName.trim(),
-                    lat: currentPosition.lat, // SALVA EXATAMENTE NA POSIÇÃO ATUAL DO GPS
-                    lng: currentPosition.lng  // SEM USAR O TOQUE DA TELA COMO COORDENADA
+                    lat: currentPosition.lat, 
+                    lng: currentPosition.lng  
                 };
                 objectsList.push(newObject);
                 localStorage.setItem('radar_objects', JSON.stringify(objectsList));
@@ -319,13 +376,14 @@
             }
         }
 
+        // Modifica o raio total da tela em metros precisos ao apertar os botões
         document.getElementById('zoom-in-btn').addEventListener('click', () => {
-            zoomLevel = Math.max(0.00001, zoomLevel / 1.5);
+            radarRadiusInMeters = Math.max(15, radarRadiusInMeters - 15); // Zoom aproxima (muda raio para 45m, 30m, 15m)
             updateRadar();
         });
 
         document.getElementById('zoom-out-btn').addEventListener('click', () => {
-            zoomLevel = Math.min(0.002, zoomLevel * 1.5);
+            radarRadiusInMeters = Math.min(150, radarRadiusInMeters + 15); // Zoom afasta (expande raio em metros)
             updateRadar();
         });
 
@@ -340,7 +398,6 @@
 
             const distance = calculateDistance(currentPosition.lat, currentPosition.lng, currentObj.lat, currentObj.lng);
             
-            // Requisito estrito de proximidade (3 metros)
             if (distance <= 3) {
                 alert(`Parabéns! Você conseguiu coletar o objeto: "${currentObj.name}"!`);
                 objectsList = objectsList.filter(obj => obj.id !== selectedObjectId);
@@ -348,7 +405,7 @@
                 selectedObjectId = null;
                 updateRadar();
             } else {
-                alert(`Fora de alcance! Você está a ${distance.toFixed(1)}m de distância. Aproxime-se a menos de 3 metros para coletar.`);
+                alert(`Fora de alcance! Você está a ${distance.toFixed(1)}m de distância. Chegue a menos de 3 metros.`);
             }
         });
 
@@ -359,7 +416,7 @@
         SCREEN.addEventListener('mouseup', cancelPress);
         SCREEN.addEventListener('mouseleave', cancelPress);
 
-        initGeolocation();
+        initSensors();
     </script>
 </body>
 </html>
